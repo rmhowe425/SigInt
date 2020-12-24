@@ -1,5 +1,5 @@
 from pcap import pcap
-from Src.Filter import Filter
+from Src.radtiotap.radiotap import radiotap_parse, ieee80211_parse
 
 class Sniffer:
 
@@ -10,19 +10,20 @@ class Sniffer:
     def __init__(self, name = None):
         self.sniff = pcap(name = name, promisc = True, immediate = True, timeout_ms = 50)
 
-
     '''
         Records an unlimited number of packets.
     '''
     def sniffPacket(self):
+
         num = 1
 
         try:
-            while True:
-                pkt = self.sniff.__next__()[1]
+            pkt = self.sniff.readpkts()
+            num = 1
 
-                print("{}\nAP MAC: {}\nClient MAC: {}\nSSID: {}\n\n".format(num, Filter.getAPMAC(pkt), Filter.getCLIMAC(pkt),
-                                                                         Filter.getSSID(pkt)))
+            for pk in pkt:
+                offset = radiotap_parse(pk[1])[0]
+                print("{})  {}".format(num, ieee80211_parse(pk[1], offset)))
                 num += 1
         except Exception as e:
             print("Error Sniffing packets\n{}".format(str(e)))

@@ -19,6 +19,7 @@ class Sniffer:
         self.pkt = self.sniff.readpkts()
         self.size = len(self.pkt)
         self.max_num = 99
+        self.total = 0
 
     '''
         Filter out and sort packets as either a client or access point.
@@ -48,11 +49,12 @@ class Sniffer:
 
             # Work to do
             else:
-                pk = self.pkt[self.size - num - 1][1]
+                pk = self.pkt[self.size - num][1]
                 offset, rt_data = radiotap_parse(pk)
 
                 # Broadcast-type of packet (signifies an access point)
                 if pk[offset] == 0x80:
+                    self.total += 1
                     iEE_offset, ap_info = ieee80211_parse(pk, offset)
                     start = iEE_offset + 14
 
@@ -63,7 +65,8 @@ class Sniffer:
                     # MAC address
                     mac = ap_info['addr3']
                     # Add new item to dictionary
-                    self.ap_list[ssid] = AccessPoint(pwr, mac, ssid)
+                    if ssid not in self.ap_list:
+                        self.ap_list[ssid] = AccessPoint(pwr, mac, ssid)
 
                 # Remove element from list, decrement list size
                 self.pkt.pop(self.size - num)
@@ -74,8 +77,6 @@ class Sniffer:
                     self.flag = 1
                 else:
                     self.flag += 1
-
-                print("Thread Num: {} Max Num: {} List Size: {} Flag: {}".format(num, self.max_num, self.size, self.flag))
 
                 # Release lock, wake up threads
                 self.cond.notify_all()

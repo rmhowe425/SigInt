@@ -10,54 +10,79 @@ class Sniffer:
         @param name: Name of adapter / file to read packets from.
     '''
     def __init__(self, name = None):
-        self.size = 1
+        self.flag = 1
         self.lock = Lock()
-        self.cond = Condition(lock = self.lock)
         self.ap_list = dict()
         self.client_list = dict()
+        self.cond = Condition(lock = self.lock)
         self.sniff = pcap(name = name, promisc = True, immediate = True, timeout_ms = 50)
+        self.pkt = self.sniff.readpkts()
+        self.size = len(self.pkt)
+        self.max_num = 100 # 99 threads created
 
     '''
         Filter out and sort packets as either a client or access point.
-        @param pk: Packet to be inspected
+        @param num: Unique numerical identifier given to a thread
     '''
-    def filter(self, pk):
-        offset, rt_data = radiotap_parse(pk)
-
-        # Broadcast packet
-        if pk[offset] == 0x80:
-            iEE_offset, ap_info = ieee80211_parse(pk, offset)
-            start = iEE_offset + 14
-
-            # SSID
-            ssid = (pk[start: start + pk[iEE_offset + 13]]).decode()
-            # Power
-            pwr = rt_data['dbm_antsignal']
-            # MAC address
-            mac = ap_info['addr3']
-
-            # Add new item to dictionary
+    def filter(self, num):
+        # Run until all indices in self.pkt have been examined
+        while True:
             self.lock.acquire()
-            self.ap_list[ssid] = AccessPoint(pwr, mac, ssid)
-            self.lock.release()
+
+            # Sleep until threads turn to run
+            while self.flag != num:
+                self.cond.wait()
+
+            # Done criteria met, kill thread.
+            if num > self.size:
+                self.cond.notify_all()
+                self.lock.release()
+                print("Thread {} finished.\n".format(num))
+                return None
+
+            # Work to do
+            else:
+                pk = self.pkt[self.size - num]
+                offset, rt_data = radiotap_parse(pk)
+
+                # Broadcast-type of packet (signifies an access point)
+                if pk[offset] == 0x80:
+                    iEE_offset, ap_info = ieee80211_parse(pk, offset)
+                    start = iEE_offset + 14
+
+                    # SSID
+                    ssid = (pk[start: start + pk[iEE_offset + 13]]).decode()
+                    # Power
+                    pwr = rt_data['dbm_antsignal']
+                    # MAC address
+                    mac = ap_info['addr3']
+                    # Add new item to dictionary
+                    self.ap_list[ssid] = AccessPoint(pwr, mac, ssid)
+
+                # Remove element from list, decrement list size
+                self.pkt.pop(self.size - num)
+                self.size -= 1
+
+                # Set values for next thread to run
+                if self.flag == self.max_num - 1:
+                    self.flag == 1
+                else:
+                    self.flag += 1
+
+                # Release lock, wake up threads
+                self.cond.notify_all()
+                self.lock.release()
+
 
     '''
-        Records an unlimited number of packets.
+        Creates a set number of threads that are used
+        to listen for and sort incoming packets.
     '''
-    def sniffPacket(self):
-        thread_array = []
+    def createThread(self):
+        thread_array = [Thread(target = self.filter, args = (i, )) for i in range(1, self.max_num)]
 
-        try:
-            pkt = self.sniff.readpkts()
-
-            for pk in pkt:
-                t = Thread(target = self.filter, args = (pk[1], ))
-                t.start()
-                thread_array.append(t)
-                self.size += 1
-                
-        except Exception as e:
-            print("Error Sniffing packets\n{}".format(str(e)))
+        for thread in thread_array:
+            thread.start()
 
         for t in thread_array:
             t.join()

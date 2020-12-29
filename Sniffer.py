@@ -59,19 +59,19 @@ class Sniffer:
                     # Add new item to dictionary
                     self.ap_list[ssid] = AccessPoint(pwr, mac, ssid)
 
-                # Remove element from list, decrement list size
-                self.pkt.pop(self.size - num)
-                self.size -= 1
+            # Remove element from list, decrement list size
+            self.pkt.pop(self.size - num)
+            self.size -= 1
 
-                # Set values for next thread to run
-                if self.flag == self.max_num - 1:
-                    self.flag == 1
-                else:
-                    self.flag += 1
+            # Set values for next thread to run
+            if self.flag == self.max_num - 1:
+                self.flag == 1
+            else:
+                self.flag += 1
 
-                # Release lock, wake up threads
-                self.cond.notify_all()
-                self.lock.release()
+            # Release lock, wake up threads
+            self.cond.notify_all()
+            self.lock.release()
 
 
     '''
